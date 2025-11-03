@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - override /model: mixtral
+  - override /training: default
+
+hydra:
+  sweeper:
+    params:
+      training.learning_rate: 1e-4,2e-4,5e-4,1e-3

@@ -1,0 +1,15 @@
+output_dir: ./models/${model.name}
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 2e-4
+fp16: false
+bf16: true
+logging_steps: 10
+save_strategy: steps
+save_steps: 100
+warmup_steps: 50
+optim: paged_adamw_8bit
+max_steps: 100
+gradient_checkpointing: true
+report_to: wandb

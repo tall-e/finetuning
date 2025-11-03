@@ -1,0 +1,13 @@
+defaults:
+  - model: mixtral
+  - training: default
+  - experiment: null
+  - _self_
+
+dataset:
+  name: timdettmers/openassistant-guanaco
+  split: train[:1000]
+
+wandb:
+  project: finetuning
+  name: ${model.name}-${training.learning_rate}
