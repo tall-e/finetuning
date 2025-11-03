@@ -36,7 +36,7 @@ echo "           (NOT your GitHub password!)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 cd ~
-git clone https://github.com/yourusername/finetuning.git  
+git clone https://github.com/$git_name/finetuning.git  
 cd finetuning
 
 # Install dependencies
