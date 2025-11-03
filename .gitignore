@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Model checkpoints and large files (don't commit these!)
+models/*.bin
+models/*.safetensors
+models/*/
+!models/.gitkeep
+
+# Data (usually too large)
+data/downloads/
+data/processed/
+data/*.parquet
+data/*.arrow
+!data/.gitkeep
+
+# Logs and experiment tracking
+*.log
+logs/
+wandb/
+runs/
+outputs/
+checkpoints/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Cache
+.cache/
+*.cache
+
+# Compiled
+*.pyc
+*.pyo
+EOF
