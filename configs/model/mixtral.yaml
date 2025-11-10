@@ -1,0 +1,18 @@
+name: mistralai/Mixtral-8x7B-Instruct-v0.1
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_quant_type: nf4
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
