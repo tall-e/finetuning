@@ -1,12 +1,9 @@
 defaults:
   - model: mixtral
   - training: default
+  - data_mixture: single
   - experiment: null
   - _self_
-
-dataset:
-  name: timdettmers/openassistant-guanaco
-  split: train[:1000]
 
 wandb:
   project: finetuning

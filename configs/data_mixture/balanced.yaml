@@ -1,0 +1,15 @@
+# Balanced 50/50 mixture
+sources:
+  - name: "timdettmers/openassistant-guanaco"
+    split: "train"
+    weight: 0.5
+    max_samples: 5000
+
+  - name: "institutional-books"
+    path: "${oc.env:HOME}/machine_learning/data_processing/outputs/institutional_books"
+    split: "train"
+    weight: 0.5
+    max_samples: 5000
+
+mixing_strategy: "interleave"
+seed: 42
