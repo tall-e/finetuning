@@ -1,47 +1,93 @@
-"""
-Hydra-based training script for flexible experiments
-"""
+"""Hydra-based training script for flexible experiments."""
+from dataclasses import dataclass
+from string import Formatter
+from typing import List, Optional
+
 import torch
 import hydra
+from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from transformers import AutoTokenizer,AutoModelForCausalLM, TrainingArguments, BitsAndBytesConfig
 from trl import SFTTrainer
-from datasets import load_dataset, concatenate_datasets, interleave_datasets, Dataset
+from datasets import load_dataset, concatenate_datasets, interleave_datasets
 from peft import LoraConfig
 import wandb
 import random
-from pathlib import Path
+
+
+@dataclass
+class DataSourceConfig:
+    """Normalized view of a dataset source from the config."""
+
+    name: Optional[str] = None
+    path: Optional[str] = None
+    split: str = "train"
+    weight: float = 1.0
+    max_samples: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if not self.name and not self.path:
+            raise ValueError("Each data source must define either 'name' or 'path'.")
+        if self.name and self.path:
+            raise ValueError("Specify only one of 'name' or 'path' per data source.")
+        if self.weight <= 0:
+            raise ValueError("Data source weights must be positive.")
+        if self.max_samples is not None and self.max_samples <= 0:
+            raise ValueError("max_samples must be positive when provided.")
+
+
+def _extract_template_fields(template: str) -> List[str]:
+    fields = {field_name for _, field_name, _, _ in Formatter().parse(template) if field_name}
+    return sorted(fields)
 
 
 def load_and_mix_datasets(cfg: DictConfig):
-    """Load multiple datasets and mix them according to config"""
+    """Load multiple datasets and mix them according to config."""
     random.seed(cfg.data_mixture.seed)
 
-    datasets = []
-    for source in cfg.data_mixture.sources:
-        # Load dataset from HuggingFace or local path
-        if "path" in source:
-            ds = load_dataset("parquet", data_files=f"{source.path}/**/*.parquet", split=source.split)
-        else:
-            ds = load_dataset(source.name, split=source.split)
+    if not cfg.data_mixture.sources:
+        raise ValueError("cfg.data_mixture.sources must include at least one dataset source.")
 
-        # Limit samples if specified
-        if source.max_samples is not None:
-            ds = ds.select(range(min(source.max_samples, len(ds))))
+    datasets = []
+    source_metadata: List[DataSourceConfig] = []
+
+    for source_cfg in cfg.data_mixture.sources:
+        source_dict = OmegaConf.to_container(source_cfg, resolve=True)
+        normalized = DataSourceConfig(**source_dict)
+
+        if normalized.path:
+            data_path = to_absolute_path(normalized.path)
+            data_files = f"{data_path}/**/*.parquet"
+            ds = load_dataset("parquet", data_files=data_files, split=normalized.split)
+        else:
+            ds = load_dataset(normalized.name, split=normalized.split)
+
+        if normalized.max_samples is not None:
+            ds = ds.select(range(min(normalized.max_samples, len(ds))))
 
         datasets.append(ds)
-        print(f"Loaded {source.name}: {len(ds)} samples (weight: {source.weight})")
+        source_metadata.append(normalized)
+        identifier = normalized.name or normalized.path
+        print(f"Loaded {identifier}: {len(ds)} samples (weight: {normalized.weight})")
 
-    # Mix datasets according to strategy
+    weights = [source.weight for source in source_metadata]
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        raise ValueError("Sum of data source weights must be positive.")
+    probabilities = [weight / total_weight for weight in weights]
+
     strategy = cfg.data_mixture.mixing_strategy
     if strategy == "concatenate":
         mixed = concatenate_datasets(datasets)
     elif strategy == "interleave":
-        weights = [s.weight for s in cfg.data_mixture.sources]
-        mixed = interleave_datasets(datasets, probabilities=weights, seed=cfg.data_mixture.seed)
+        mixed = interleave_datasets(datasets, probabilities=probabilities, seed=cfg.data_mixture.seed)
     elif strategy == "sample_proportional":
-        weights = [s.weight for s in cfg.data_mixture.sources]
-        mixed = interleave_datasets(datasets, probabilities=weights, seed=cfg.data_mixture.seed, stopping_strategy="all_exhausted")
+        mixed = interleave_datasets(
+            datasets,
+            probabilities=probabilities,
+            seed=cfg.data_mixture.seed,
+            stopping_strategy="all_exhausted",
+        )
     else:
         raise ValueError(f"Unknown mixing strategy: {strategy}")
 
@@ -95,9 +141,21 @@ def main(cfg: DictConfig):
 
     dataset = load_and_mix_datasets(cfg)
     print(f"Final mixed dataset size: {len(dataset)}")
-    
+
+    prompt_template: str = cfg.preprocessing.prompt_template
+    template_fields = _extract_template_fields(prompt_template)
+    if not template_fields:
+        raise ValueError("preprocessing.prompt_template must reference at least one column.")
+
     def formatting_func(example):
-        return example["text"]
+        missing = [field for field in template_fields if field not in example]
+        if missing:
+            raise KeyError(
+                f"Example missing required field(s) {missing}. "
+                "Update preprocessing.prompt_template or ensure the dataset provides the column."
+            )
+        values = {field: example[field] for field in template_fields}
+        return prompt_template.format(**values)
     
     training_config = OmegaConf.to_container(cfg.training, resolve=True)
     training_args = TrainingArguments(**training_config)
