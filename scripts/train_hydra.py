@@ -6,9 +6,46 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from transformers import AutoTokenizer,AutoModelForCausalLM, TrainingArguments, BitsAndBytesConfig
 from trl import SFTTrainer
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets, interleave_datasets, Dataset
 from peft import LoraConfig
 import wandb
+import random
+from pathlib import Path
+
+
+def load_and_mix_datasets(cfg: DictConfig):
+    """Load multiple datasets and mix them according to config"""
+    random.seed(cfg.data_mixture.seed)
+
+    datasets = []
+    for source in cfg.data_mixture.sources:
+        # Load dataset from HuggingFace or local path
+        if "path" in source:
+            ds = load_dataset("parquet", data_files=f"{source.path}/**/*.parquet", split=source.split)
+        else:
+            ds = load_dataset(source.name, split=source.split)
+
+        # Limit samples if specified
+        if source.max_samples is not None:
+            ds = ds.select(range(min(source.max_samples, len(ds))))
+
+        datasets.append(ds)
+        print(f"Loaded {source.name}: {len(ds)} samples (weight: {source.weight})")
+
+    # Mix datasets according to strategy
+    strategy = cfg.data_mixture.mixing_strategy
+    if strategy == "concatenate":
+        mixed = concatenate_datasets(datasets)
+    elif strategy == "interleave":
+        weights = [s.weight for s in cfg.data_mixture.sources]
+        mixed = interleave_datasets(datasets, probabilities=weights, seed=cfg.data_mixture.seed)
+    elif strategy == "sample_proportional":
+        weights = [s.weight for s in cfg.data_mixture.sources]
+        mixed = interleave_datasets(datasets, probabilities=weights, seed=cfg.data_mixture.seed, stopping_strategy="all_exhausted")
+    else:
+        raise ValueError(f"Unknown mixing strategy: {strategy}")
+
+    return mixed
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -51,9 +88,9 @@ def main(cfg: DictConfig):
         task_type=cfg.model.lora.task_type,
         target_modules=cfg.model.lora.target_modules,
     )
-    
-    dataset = load_dataset(cfg.dataset.name, split=cfg.dataset.split)
-    print(f"Dataset size: {len(dataset)}")
+
+    dataset = load_and_mix_datasets(cfg)
+    print(f"Final mixed dataset size: {len(dataset)}")
     
     def formatting_func(example):
         return example["text"]

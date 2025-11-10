@@ -1,0 +1,12 @@
+# Single dataset configuration (backward compatible)
+# This maintains the original behavior of loading one dataset
+
+sources:
+  - name: "timdettmers/openassistant-guanaco"
+    split: "train[:1000]"
+    weight: 1.0
+    max_samples: null  # null means use all samples from split
+
+# Mixing strategy (only relevant for multiple sources)
+mixing_strategy: "concatenate"  # Options: "concatenate", "interleave", "sample_proportional"
+seed: 42

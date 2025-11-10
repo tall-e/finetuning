@@ -1,0 +1,20 @@
+# Custom mixture template - modify as needed
+sources:
+  - name: "timdettmers/openassistant-guanaco"
+    split: "train[:5000]"
+    weight: 0.4
+    max_samples: null
+
+  - name: "HuggingFaceFW/fineweb-edu"
+    split: "train[:5000]"
+    weight: 0.4
+    max_samples: null
+
+  - name: "custom-dataset"
+    path: "/path/to/your/dataset"
+    split: "train"
+    weight: 0.2
+    max_samples: 2000
+
+mixing_strategy: "concatenate"
+seed: 42

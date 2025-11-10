@@ -1,0 +1,15 @@
+# Institutional books focused: 70/30 mixture
+sources:
+  - name: "institutional-books"
+    path: "${oc.env:HOME}/machine_learning/data_processing/outputs/institutional_books"
+    split: "train"
+    weight: 0.7
+    max_samples: 7000
+
+  - name: "timdettmers/openassistant-guanaco"
+    split: "train"
+    weight: 0.3
+    max_samples: 3000
+
+mixing_strategy: "sample_proportional"
+seed: 42
