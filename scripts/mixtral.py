@@ -1,100 +1,30 @@
-"""Simple SFT training script for Mixtral 8x7B."""
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, BitsAndBytesConfig
-from trl import SFTTrainer
-from datasets import load_dataset
-from peft import LoraConfig
+"""Simple Mixtral 8x7B preset that reuses the Hydra training pipeline."""
+from __future__ import annotations
 
-import wandb
+from pathlib import Path
+
+from hydra import compose, initialize_config_dir
+from omegaconf import DictConfig, OmegaConf
+
+from src.trainers import run_training
+
+DEFAULT_OUTPUT_DIR = "./models/mixtral-8x7b-sft"
+DEFAULT_WANDB_NAME = "mixtral-8x7b-sft-test-1"
+
+
+def _load_base_config() -> DictConfig:
+    config_dir = Path(__file__).resolve().parent.parent / "configs"
+    with initialize_config_dir(config_dir=str(config_dir), job_name="mixtral_script"):
+        cfg = compose(config_name="config")
+    OmegaConf.set_readonly(cfg, False)
+    return cfg
 
 
 def main() -> None:
-    wandb.init(project="finetuning", name="mixtral-8x7b-sft-test-1")
-
-    model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
-    output_dir = "./models/mixtral-8x7b-sft"
-
-    print(f"Loading model: {model_name}")
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
-
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-    )
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        quantization_config=quantization_config,
-        trust_remote_code=True,
-    )
-
-    if torch.cuda.is_available():
-        print(f"Model loaded on CUDA device(s): {model.device}")
-        torch.cuda.reset_peak_memory_stats()
-    else:
-        print("Model loaded on CPU")
-
-    peft_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    )
-
-    dataset = load_dataset("timdettmers/openassistant-guanaco", split="train[:1000]")
-    print(f"Dataset size: {len(dataset)}")
-
-    def formatting_func(example):
-        return example["text"]
-
-    training_config = dict(
-        output_dir=output_dir,
-        num_train_epochs=1,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=8,
-        learning_rate=2e-4,
-        fp16=False,
-        bf16=True,
-        logging_steps=10,
-        save_strategy="steps",
-        save_steps=100,
-        warmup_steps=50,
-        optim="paged_adamw_8bit",
-        report_to="wandb",
-        max_steps=100,
-        gradient_checkpointing=True,
-    )
-
-    training_args = TrainingArguments(**training_config)
-
-    trainer = SFTTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset,
-        peft_config=peft_config,
-        processing_class=tokenizer,
-        formatting_func=formatting_func,
-    )
-
-    print("Starting training...")
-    trainer.train()
-
-    if torch.cuda.is_available():
-        peak_mem_gb = torch.cuda.max_memory_allocated() / 1e9
-        print(f"Peak GPU memory: {peak_mem_gb:.2f} GB")
-
-    print(f"Saving model to {output_dir}")
-    trainer.save_model(output_dir)
-    print("Training complete!")
-    wandb.finish()
+    cfg = _load_base_config()
+    cfg.training.output_dir = DEFAULT_OUTPUT_DIR
+    cfg.wandb.name = DEFAULT_WANDB_NAME
+    run_training(cfg)
 
 
 if __name__ == "__main__":
