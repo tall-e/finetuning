@@ -78,7 +78,11 @@ def main(cfg: DictConfig):
         trust_remote_code=True,
     )
     
-    print(f"Model memory: {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
+    if torch.cuda.is_available():
+        print(f"Model loaded on CUDA device(s): {model.device}")
+        torch.cuda.reset_peak_memory_stats()
+    else:
+        print("Model loaded on CPU")
     
     peft_config = LoraConfig(
         r=cfg.model.lora.r,
@@ -95,23 +99,8 @@ def main(cfg: DictConfig):
     def formatting_func(example):
         return example["text"]
     
-    training_args = TrainingArguments(
-        output_dir=cfg.training.output_dir,
-        num_train_epochs=cfg.training.num_train_epochs,
-        per_device_train_batch_size=cfg.training.per_device_train_batch_size,
-        gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
-        learning_rate=cfg.training.learning_rate,
-        fp16=cfg.training.fp16,
-        bf16=cfg.training.bf16,
-        logging_steps=cfg.training.logging_steps,
-        save_strategy=cfg.training.save_strategy,
-        save_steps=cfg.training.save_steps,
-        warmup_steps=cfg.training.warmup_steps,
-        optim=cfg.training.optim,
-        report_to=cfg.training.report_to,
-        max_steps=cfg.training.max_steps,
-        gradient_checkpointing=cfg.training.gradient_checkpointing,
-    )
+    training_config = OmegaConf.to_container(cfg.training, resolve=True)
+    training_args = TrainingArguments(**training_config)
     
     trainer = SFTTrainer(
         model=model,
@@ -124,6 +113,10 @@ def main(cfg: DictConfig):
     
     print("Starting training...")
     trainer.train()
+    
+    if torch.cuda.is_available():
+        peak_mem_gb = torch.cuda.max_memory_allocated() / 1e9
+        print(f"Peak GPU memory: {peak_mem_gb:.2f} GB")
     
     print(f"Saving model to {cfg.training.output_dir}")
     trainer.save_model(cfg.training.output_dir)
