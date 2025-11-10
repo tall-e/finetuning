@@ -2,6 +2,7 @@ defaults:
   - model: mixtral
   - training: default
   - data_mixture: single
+  - preprocessing: default
   - experiment: null
   - _self_
 
